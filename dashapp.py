@@ -1,32 +1,25 @@
-import time
 import dash
-from dash import html
+from celery import Celery
 from dash.long_callback import CeleryLongCallbackManager
-from dash.dependencies import Input, Output
-from worker import capp, call_api
+from layouts import layout
+from tasks import get_tasks
 
+API_URL = 'http://127.0.0.1:8888'
 
-long_callback_manager = CeleryLongCallbackManager(capp)
+app = Celery('worker',
+             broker="redis://192.168.99.100:6379/0",
+             backend="redis://192.168.99.100:6379/1")
 
-app = dash.Dash('dashapp',
-                long_callback_manager=long_callback_manager,
-                prevent_initial_callbacks=True)
+long_callback_manager = CeleryLongCallbackManager(app)
 
-app.layout = html.Div([html.Div([html.P(id="paragraph_id", children=["Button not clicked"])]),
-                       html.Button(id="button_id", children="Run Job!"),
-                       html.Button(id="cancel_button_id", children="Cancel Running Job!"), ])
+dash_app = dash.Dash('dashapp',
+                     long_callback_manager=long_callback_manager,
+                     prevent_initial_callbacks=True)
 
+dash_app.layout = layout
 
-@app.long_callback(
-    output=Output("paragraph_id", "children"),
-    inputs=Input("button_id", "n_clicks"),
-    running=[(Output("button_id", "disabled"), True, False),
-             (Output("cancel_button_id", "disabled"), False, True), ],
-    cancel=Input("cancel_button_id", "n_clicks"))
-def callback(n_clicks):
-    task = call_api('some text')
-    return [f"Clicked {n_clicks} times"]
+get_tasks(dash_app, API_URL)
 
 
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    dash_app.run_server(debug=True)
